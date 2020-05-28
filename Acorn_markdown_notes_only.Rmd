@@ -1,0 +1,237 @@
+---
+title: "Acorn Mapping Markdown"
+output:
+  html_document:
+    theme: paper
+    highlight: haddock
+    toc: true
+    number_section: true
+    toc_float:
+      collapsed: false
+---
+# Mapping LSOA Boundaries with R
+## Introduction
+
+The following document provides basic guidelines pertaining to the construction of LSOA boundary maps in R. 
+
+Much of this analysis is based on the following tutorials:
+
+## Leaflet
+
+The R mapping package used for this this analysis is named Leaflet. It one of the most popular open-source JavaScript libraries for interactive maps. It can be highly customised by the developer. The tutorial used to assist this analysis is here: https://rstudio.github.io/leaflet/
+
+## Importing Shape File for LSOA plot
+
+There are some particulars with regards to plotting LSOA boundaries in R. The key points are detailed in the first half of this blog:
+https://blog.exploratory.io/making-maps-for-uk-countries-and-local-authorities-areas-in-r-b7d222939597
+(If the link doesn't work just Google "Making Maps for UK Countries and Local Authorities Areas in R". It is the first link that appears).
+
+This blog outlines how to import shapefiles in to R, and how to manipulate these files. It is important to look through this tutorial prior to working with shape/GeoJSON files in R.
+
+## Libraries to install and load
+
+There are a number of packages that require loading in order for this mapping app to work. These are listed below, with an explanation next to each. Make sure you locally installed these packages first.
+
+```{r packages, echo=TRUE, results='hide', warning=FALSE, message=FALSE, eval=FALSE}
+
+#install.packages("dplyr") # the process includes some functions found in dplyr e.g. filter
+#install.packages("readr") # used to read in CSV file
+#install.packages("shiny") # required to develop/launch Shiny apps
+#install.packages("leaflet") # the mapping package used in this app
+#install.packages("rgdal") # used to import shape files, it also loads the package 'sp'
+#install.packages("rmapshaper") # used to alter the projection type of the shape file. it is from the package 'sp', which you may need to install separatly.
+#install.packages("spdplyr") # allows dplyr to work with spatial data frames, such as shape #files
+#install.packages("DT") # used for renderDataTable, which provides the data tables in the #app #with filtering/pagination ect
+#install.packages("shinyWidgets") # provides custom slicers to filter the app
+
+library(dplyr)
+library(readr)
+library(shiny)
+library(leaflet)
+library(rgdal)
+library(rmapshaper)
+library(spdplyr) 
+library(DT)
+library(shinyWidgets)
+```
+
+## Data Import Process
+
+The following 'chunk' of code imports the required data. The first dataset imported is the Acorn data in CSV format. This provides the data at LSOA level. Note that it is not this file that is eventually plotted, but a shape file with the required data.
+
+Also note, it would be better to import data directly from the relevant SQL server, which is quite straight forward in R.
+
+```{r import, echo=TRUE, results='hide', include=TRUE, message=FALSE, eval=FALSE}
+
+###import acorn data####
+acorn_profiles <- read_csv("acorn_profile_data.csv")
+
+###import HIGH RESOLUTION lsoa shape file and transform type####
+
+#The following code uses readOGR from the 'rgdal' package to import the shape file. Note #that it appears you also need to have the other mapping file types in the same directory #for this to #work (when importing a shape file):
+#SHX, PRJ, DBF, CPG, XML. Not all of these may be required, but some of them are (they are #included by default when you download a shape file from the ONS website).
+
+Lancs_lsoa_HR <- readOGR("Lower_Layer_Super_Output_Areas_December_2011_Full_Extent__Boundaries_in_England_and_Wales.shp","Lower_Layer_Super_Output_Areas_December_2011_Full_Extent__Boundaries_in_England_and_Wales",
+                         stringsAsFactors = FALSE) %>%
+                 spTransform(CRS("+proj=longlat +datum=WGS84 +no_defs"))
+
+#the function above converts boundary data from OSGB 36 datum (1936 Ordnance Survey Great Britain) 
+# we want it to be in Longitude / Latitude points coordinate system based on ‘WGS84’ (World Geodetic System 1984) datum
+#we can convert between the two systems pretty easily in R, thanks to ‘spTransform’ function from ‘rgdal’
+#can set the new coordinate system with ‘CRS’ function and set it to ‘spTransform’ function like above.
+#this is explained in the LSOA plotting blog included above.
+#mapping UK boundaries will not work without this step.
+
+#the function below reduces the size of the data object, however, this causes the boundaries to be more ridged - and changes their shape slightly. I wouldn't use this when plotting LSOA
+
+#simplify_LSOA <- ms_simplify(Lancs_lsoa_HR)
+```
+
+The above code imports a high resolution full extent boundary shape file. It is quite a sizeable file, and therefore slows down the loading process. I tried a low resolution file, but there is a noticeable drop in the quality of the plot. Might be worth trying the high resolution 'clipped' file.
+
+The shape file is loaded as a 'SpatialPolygonsDataFrame'. This is a type of data frame that R plots as boundaries on a map. i.e. it is not the Acorn lsoa data CSV file iteself that is plotted. The following steps explain the steps required to plot the Acorn data...
+
+## Shiny App Development
+
+The final product is developed as a Shiny App. This allows for an interactive version of the map to be rendered. Much of what i have learnt with regards to developing Shint Apps can be found in the R Studio tutorial here:
+
+https://shiny.rstudio.com/tutorial/written-tutorial/lesson1/
+
+The leaflet tutorial included previously also has a section on developing leaflet maps using Shiny, and is worth looking through.
+
+There are essentiall two components to the app, a 'ui', which dictates with layout of the app, and a 'server' element, which provides the code for the app to work.
+
+The process below is essentially as follows:
+
+* Develop the 'ui'. This determines the app layout, e.g. slicers/tabs to include.
+* 'server' element which includes the code that allows the app to work. This is doing the following:
+   + This takes the imported shape file, and joins it with a summarised version of the Acorn LSOA data file. It is summarised based on the selections the user has input into the ui.
+   + The summarised Acorn data is a filtered version of the data based on selections made by the user. The end result of this is an Acord data table which aggregates the total propensity population for each LSOA, as well as providing a rate per 100 for each LSOA (total_propensity_population/total_population) * 100. The 'total population' is the population for each LSOA taken from the Acorn dataset.
+   + This summary table by LSOA is then joined to the shape file. This is achieved thanks to the 'spdplyr' package that allows dplyr to work with shape files. Importantly, the final product retains its class of 'SpatialPolygonsDataFrame', which can then be plotted.
+   + The leaflet function then plots the map, which can be highly customised by the developer.
+   + Also output are two tables, which are displayed on separate tabs. These display the summary data per LSOA, and the Acorn data, all of which reflect the current filter options selected by the user.
+   + Please refer to the leaflet tutorial shared above for more detail on constructing and customising maps.
+
+### Colout Palette
+
+```{r colour palette, echo=TRUE, results='hide', include=TRUE, message=FALSE, eval=FALSE}
+###colour pal####
+#this just provides a colour palette used to fill boundaries
+pal2 <- colorNumeric("viridis", NULL)
+```
+
+### Map Development - UI & Server
+
+```{r Map, echo=TRUE, include=TRUE, eval=FALSE}
+###UI for app####
+ui <- fluidPage(titlePanel("Lancashire and South Cumbria STP - Acorn Data"),
+                p(),
+                sidebarLayout(
+                    sidebarPanel(
+                pickerInput("CCG", "CCG Name", unique(acorn_profiles$CCGName), options = list(`actions-box` = TRUE), multiple = TRUE),
+                pickerInput("Measure", "Measure", unique(acorn_profiles$PropensityMeasure), options = list(`actions-box` = TRUE), multiple = TRUE),
+                pickerInput("Wellbeing", "Wellbeing", unique(acorn_profiles$WellbeingAcornFullDescription), options = list(`actions-box` = TRUE), multiple = TRUE),
+                pickerInput("HouseholdType", "Household Type", unique(acorn_profiles$AcornHouseholdType), options = list(`actions-box` = TRUE), multiple = TRUE),
+                selectInput("Base", "Basemap", c("OpenStreetMap.Mapnik","Esri.WorldStreetMap","Esri.WorldImagery"), selected = "OpenStreetMap.Mapnik", multiple = FALSE)),
+                mainPanel(
+                    tabsetPanel(type = "tabs",
+                                tabPanel("Map",leafletOutput("mymap", height = 600)),
+                                tabPanel("Acorn Data",dataTableOutput("test_table")),
+                                tabPanel("LSOA Summary",dataTableOutput("LSOA_summary"))
+                    )
+                )
+                ))
+
+###server for app####
+server <- function(input, output, session) {
+    output$mymap <- renderLeaflet({
+        Lancs_lsoa_acorn <- Lancs_lsoa_HR %>%
+            inner_join(acorn_profiles %>%
+                           filter(
+                               CCGName %in% input$CCG,
+                               PropensityMeasure %in% input$Measure,
+                               WellbeingAcornFullDescription %in% input$Wellbeing,
+                               AcornHouseholdType %in% input$HouseholdType
+                           ) %>%
+                           group_by(LSOA) %>%
+                           summarise(
+                               total_population = sum(Population),
+                               total_propensity_pop = sum(PropensityPopulation, na.rm = TRUE),
+                               rate = round(total_propensity_pop/total_population *100, 2)
+                           ),c("lsoa11cd" = "LSOA")
+            )
+        
+        leaflet(Lancs_lsoa_acorn) %>% addProviderTiles(input$Base) %>%
+            addPolygons(group = "Propensity Population", weight = 1, smoothFactor = 0.5,
+                        opacity = 1.0, fillOpacity = 0.5, color = "#444444", 
+                        label = ~paste0(Lancs_lsoa_acorn$lsoa11cd, ": ", formatC(Lancs_lsoa_acorn$total_propensity_pop)),
+                        highlightOptions = highlightOptions(color = "white", weight = 2,
+                                                            bringToFront = TRUE),
+                        fillColor = ~pal2(Lancs_lsoa_acorn$total_propensity_pop)) %>%
+            addLegend("bottomleft",pal = pal2, values = Lancs_lsoa_acorn$total_propensity_pop,
+                      opacity = 0.7, group = "Propensity Population", title ="Propensity Population" ) %>%
+            addPolygons(group = "Rate per Population", weight = 1, smoothFactor = 0.5,
+                        opacity = 1.0, fillOpacity = 0.5, color = "#444444", 
+                        label = ~paste0(Lancs_lsoa_acorn$lsoa11cd, ": ", formatC(Lancs_lsoa_acorn$rate)),
+                        highlightOptions = highlightOptions(color = "white", weight = 2,
+                                                            bringToFront = TRUE),
+                        fillColor = ~pal2(Lancs_lsoa_acorn$rate)) %>%
+            addLegend("bottomright",pal = pal2, values = Lancs_lsoa_acorn$rate,
+                      opacity = 0.7, group = "Rate per Population", title = "Rate per Population") %>%
+            addLayersControl(baseGroups = c("Propensity Population","Rate per Population"), options = 
+                                 layersControlOptions(collapsed = TRUE))
+    })
+    
+    output$test_table <- renderDataTable({
+        acorn_profiles %>%
+                 subset(
+                     CCGName %in% input$CCG &
+                         PropensityMeasure %in% input$Measure &
+                         WellbeingAcornFullDescription %in% input$Wellbeing &
+                         AcornHouseholdType %in% input$HouseholdType
+                 )
+        
+    })
+    
+    output$LSOA_summary <- renderDataTable({
+        acorn_profiles %>%
+            filter(
+                CCGName %in% input$CCG,
+                PropensityMeasure %in% input$Measure,
+                WellbeingAcornFullDescription %in% input$Wellbeing,
+                AcornHouseholdType %in% input$HouseholdType
+            ) %>%
+            group_by(LSOA) %>%
+            summarise(
+                total_population = sum(Population),
+                total_propensity_pop = sum(PropensityPopulation, na.rm = TRUE),
+                rate = round(total_propensity_pop/total_population *100, 2)
+            )
+    })
+}
+```
+
+## The Map
+
+The code below uses the shinyApp function to plot the ui and server, and produce the final product. 
+
+```{r final, echo=TRUE, fig.align='center', eval=FALSE}
+###run app####
+shinyApp(ui, server)
+```
+
+***
+
+```{r pic, echo=FALSE, message=FALSE, fig.align='center'}
+
+knitr::include_graphics('Map_pic.png')
+
+```
+
+***
+
+## Final Points
+
+Although it might seem slow to initially load, once loaded, the map is fast and responsive. Certainly more so than LSOA maps i have seen in PowerBI (although it should be noted that i haven't been able to plot LSOA data as well as this in PowerBI).
+
+If you change the imported files, make sure to change all refernces to the file names to reflect the new file names. In addition, make sure the correct column names are references.
