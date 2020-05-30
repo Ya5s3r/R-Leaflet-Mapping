@@ -59,11 +59,13 @@ library(shinyWidgets)
 
 The following 'chunk' of code imports the required data. The first dataset imported is the Acorn data in CSV format. This provides the data at LSOA level. Note that it is not this file that is eventually plotted, but a shape file with the required data.
 
-Also note, it would be better to import data directly from the relevant SQL server, which is quite straight forward in R.
+Also note, it would be better to import data directly from SQL server, which is quite straight forward in R.
 
 ```{r import, echo=TRUE, results='hide', include=TRUE, message=FALSE, eval=FALSE}
 
 ###import acorn data####
+###'acorn' data simply relates to a geosegmentation dataset that includes an LSOA variable. Replace with any similar dataset.
+
 acorn_profiles <- read_csv("acorn_profile_data.csv")
 
 ###import HIGH RESOLUTION lsoa shape file and transform type####
@@ -89,30 +91,30 @@ Lancs_lsoa_HR <- readOGR("Lower_Layer_Super_Output_Areas_December_2011_Full_Exte
 
 The above code imports a high resolution full extent boundary shape file. It is quite a sizeable file, and therefore slows down the loading process. I tried a low resolution file, but there is a noticeable drop in the quality of the plot. Might be worth trying the high resolution 'clipped' file.
 
-The shape file is loaded as a 'SpatialPolygonsDataFrame'. This is a type of data frame that R plots as boundaries on a map. i.e. it is not the Acorn lsoa data CSV file iteself that is plotted. The following steps explain the steps required to plot the Acorn data...
+The shape file is loaded as a 'SpatialPolygonsDataFrame'. This is a type of data frame that R plots as boundaries on a map. i.e. it is not the Acorn lsoa data CSV file itself that is plotted. The following steps explain the steps required to plot the Acorn data...
 
 ## Shiny App Development
 
-The final product is developed as a Shiny App. This allows for an interactive version of the map to be rendered. Much of what i have learnt with regards to developing Shint Apps can be found in the R Studio tutorial here:
+The final product is developed as a Shiny App. This allows for an interactive version of the map to be rendered. Much of what i have learnt with regards to developing Shiny Apps can be found in the R Studio tutorial here:
 
 https://shiny.rstudio.com/tutorial/written-tutorial/lesson1/
 
 The leaflet tutorial included previously also has a section on developing leaflet maps using Shiny, and is worth looking through.
 
-There are essentiall two components to the app, a 'ui', which dictates with layout of the app, and a 'server' element, which provides the code for the app to work.
+There are essential two components to the app, a 'ui', which dictates with layout of the app, and a 'server' element, which provides the code for the app to work.
 
 The process below is essentially as follows:
 
 * Develop the 'ui'. This determines the app layout, e.g. slicers/tabs to include.
 * 'server' element which includes the code that allows the app to work. This is doing the following:
    + This takes the imported shape file, and joins it with a summarised version of the Acorn LSOA data file. It is summarised based on the selections the user has input into the ui.
-   + The summarised Acorn data is a filtered version of the data based on selections made by the user. The end result of this is an Acord data table which aggregates the total propensity population for each LSOA, as well as providing a rate per 100 for each LSOA (total_propensity_population/total_population) * 100. The 'total population' is the population for each LSOA taken from the Acorn dataset.
+   + The summarised Acorn data is a filtered version of the data based on selections made by the user. The end result of this is an  data table which aggregates the total propensity population for each LSOA, as well as providing a rate per 100 for each LSOA (total_propensity_population/total_population) * 100. The 'total population' is the population for each LSOA taken from the Acorn dataset.
    + This summary table by LSOA is then joined to the shape file. This is achieved thanks to the 'spdplyr' package that allows dplyr to work with shape files. Importantly, the final product retains its class of 'SpatialPolygonsDataFrame', which can then be plotted.
    + The leaflet function then plots the map, which can be highly customised by the developer.
    + Also output are two tables, which are displayed on separate tabs. These display the summary data per LSOA, and the Acorn data, all of which reflect the current filter options selected by the user.
    + Please refer to the leaflet tutorial shared above for more detail on constructing and customising maps.
 
-### Colout Palette
+### Colour Palette
 
 ```{r colour palette, echo=TRUE, results='hide', include=TRUE, message=FALSE, eval=FALSE}
 ###colour pal####
@@ -232,6 +234,8 @@ knitr::include_graphics('Map_pic.png')
 
 ## Final Points
 
-Although it might seem slow to initially load, once loaded, the map is fast and responsive. Certainly more so than LSOA maps i have seen in PowerBI (although it should be noted that i haven't been able to plot LSOA data as well as this in PowerBI).
+Although it might seem slow to initially load, once loaded, the map is fast and responsive. Certainly more so than LSOA maps i have seen in PowerBI (although it should be noted that i haven't been able to plot LSOA data as well as this in PowerBI). 
 
-If you change the imported files, make sure to change all refernces to the file names to reflect the new file names. In addition, make sure the correct column names are references.
+(Note - this was initially an attempt to assess the mapping capabilities in R with what I have previously done in PowerBI.)
+
+If you change the imported files, make sure to change all references to the file names to reflect the new file names. In addition, make sure the correct column names are references.
